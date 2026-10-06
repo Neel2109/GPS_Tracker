@@ -333,4 +333,5 @@ retention policy for location data.
 
 ## License
 
-MIT
+Neel Patel
+
