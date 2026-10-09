@@ -15,14 +15,10 @@ export default function PairDevice({ onClose, onPaired }: Props) {
   const [name, setName] = useState('');
   const [type, setType] = useState<DeviceType>('laptop');
   const [loading, setLoading] = useState(false);
-  const [copiedAddress, setCopiedAddress] = useState(false);
   const [error, setError] = useState('');
   const existingDeviceIds = useRef<Set<string>>(new Set());
   const generatedAt = useRef(0);
   const onPairedRef = useRef(onPaired);
-  const [serverUrl, setServerUrl] = useState(`${window.location.protocol}//${window.location.hostname}:8000`);
-  const serverAddress = serverUrl.trim().replace(/\/+$/, '');
-  const serverAddressIsValid = /^https?:\/\/[^/\s]+(?::\d+)?$/i.test(serverAddress);
   const types: DeviceType[] = ['laptop', 'desktop'];
 
   useEffect(() => {
@@ -76,16 +72,6 @@ export default function PairDevice({ onClose, onPaired }: Props) {
       setError(requestError instanceof Error ? requestError.message : 'Could not start device pairing.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const copyServerAddress = async () => {
-    try {
-      await navigator.clipboard.writeText(serverAddress);
-      setCopiedAddress(true);
-    } catch (downloadError) {
-      console.error('Could not copy TrackGuard server address:', downloadError);
-      setError('Could not copy the server address. Select and copy it manually.');
     }
   };
 
@@ -143,26 +129,10 @@ export default function PairDevice({ onClose, onPaired }: Props) {
                 </div>
               </div>
 
-              <div>
-                <label htmlFor="agent-server-url" className="tg-label">TrackGuard server IP / address</label>
-                <input
-                  id="agent-server-url"
-                  value={serverUrl}
-                  onChange={event => setServerUrl(event.target.value)}
-                  className={`tg-input !py-2.5 !text-xs ${serverAddressIsValid ? '' : '!border-[#e17878]'}`}
-                  placeholder="http://192.168.1.10:8000"
-                  spellCheck={false}
-                  required
-                />
-                <p className="mt-1.5 text-xs leading-5 text-[#777981]">
-                  Enter the address of the computer running TrackGuard. A remote device needs a publicly reachable server address.
-                </p>
-              </div>
-
               <div className="rounded-lg border border-[#d9e8df] bg-[#f3f8f5] px-3.5 py-3 text-left">
                 <p className="text-xs font-semibold text-[#315c45]">Use the installed app</p>
                 <p className="mt-1 text-xs leading-5 text-[#61756a]">
-                  No download is created here. The device app will ask for this server address, its name, and the owner PIN.
+                  No download is created here. Enter the owner PIN in the device app; configure its server address there if needed.
                 </p>
               </div>
 
@@ -170,7 +140,7 @@ export default function PairDevice({ onClose, onPaired }: Props) {
                 <button type="button" onClick={onClose} className="tg-btn tg-btn-outline min-h-11 flex-1 justify-center">Cancel</button>
                 <button
                   type="submit"
-                  disabled={loading || !name.trim() || !serverAddressIsValid}
+                  disabled={loading || !name.trim()}
                   className="tg-btn tg-btn-primary min-h-11 flex-1 justify-center"
                 >
                   {loading ? 'Connecting…' : 'Start pairing'}
@@ -185,24 +155,12 @@ export default function PairDevice({ onClose, onPaired }: Props) {
             </div>
             <h3 className="mb-2 text-xl font-semibold text-text">Waiting for the app</h3>
             <p className="mx-auto mb-5 max-w-sm text-sm leading-5 text-text-muted">
-              Open TrackGuard on <span className="font-medium text-text">{name.trim()}</span>, enter the server address and PIN, then start pairing.
+              Open TrackGuard on <span className="font-medium text-text">{name.trim()}</span>, enter the owner PIN, and start pairing. The app must already be configured to reach this server.
             </p>
 
             <div className="mb-4 rounded-lg border border-[#e4e4e7] bg-[#f7f7f8] p-3 text-left">
-              <label htmlFor="pair-server-address" className="mb-1 block text-xs font-semibold text-[#55565e]">Server address</label>
-              <div className="flex gap-2">
-                <input
-                  id="pair-server-address"
-                  value={serverAddress}
-                  readOnly
-                  className="tg-input min-w-0 flex-1 !py-2.5 !text-xs"
-                  onFocus={event => event.currentTarget.select()}
-                />
-                <button type="button" onClick={() => void copyServerAddress()} className="tg-btn tg-btn-outline min-h-10 shrink-0 justify-center px-3">
-                  {copiedAddress ? 'Copied' : 'Copy'}
-                </button>
-              </div>
-              <p className="mt-2 text-xs leading-5 text-[#696b70]">The app asks for this address, the device name above, and the PIN. Pairing completes only when its agent is online.</p>
+              <p className="text-xs font-semibold text-[#55565e]">Waiting for {name.trim()}</p>
+              <p className="mt-1 text-xs leading-5 text-[#696b70]">Pairing completes only after the installed app authenticates with the PIN and its agent connects online.</p>
             </div>
             {error && <p role="alert" className="mb-3 text-left text-xs text-[#b14f4f]">{error}</p>}
 

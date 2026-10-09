@@ -328,17 +328,20 @@ TrackGuard displays and lets you search by the device's reported local/public
 IP. The device ID remains an internal authentication key.
 
 In the dashboard, choose **Add a device**, enter a display name and type, and
-set the TrackGuard server address. Use `http://localhost:8000` only for a device on
-the same computer; for another computer on the same network use the server
-computer's LAN IP (for example, `http://192.168.1.10:8000`). For a device
-outside that network, the server needs a publicly reachable HTTPS address.
+choose **Start pairing**. The dashboard waits for the already-installed device
+app; it does not ask for or copy a server address. Configure the TrackGuard
+server address in the Android or Windows app. Use `http://localhost:8000` only
+when the app runs on the server computer; for another computer on the same
+network use the server computer's LAN IP (for example,
+`http://192.168.1.10:8000`). A device outside that network needs a publicly
+reachable HTTPS address.
 
 Build the reusable Windows app once with `.\.venv312\Scripts\python.exe build_exe.py`.
 This creates `dist\TrackGuardSetup.exe`; transfer that app to each Windows
 device once. In the dashboard, enter the device's name/type and choose
 **Start pairing**. Open the already-installed TrackGuard app on the device,
-enter the same server address and name plus the owner PIN, then choose
-**Pair and connect**. The device appears in the dashboard only after its agent
+configure its server address if this is its first run, enter the matching name
+and owner PIN, then choose **Pair and connect**. The device appears in the dashboard only after its agent
 connects. It is neither redownloaded nor paired again on future launches; the
 app reuses its locally saved device token and starts tracking. The app starts
 with the current Windows user and does not require Python or terminal commands
