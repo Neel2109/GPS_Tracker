@@ -25,9 +25,9 @@ def build():
     result = subprocess.run(cmd, cwd=str(project_root))
     
     if result.returncode == 0:
-        print("\n✅ Build successful! The desktop app is located in the 'dist' folder.")
+        print("\nBuild successful. The desktop app is located in the 'dist' folder.")
     else:
-        print("\n❌ Build failed.")
+        print("\nBuild failed.")
 
 if __name__ == "__main__":
     build()

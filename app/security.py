@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import time
 from typing import Optional
 import jwt
 import bcrypt
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.config import settings
 from app.database import get_db
-from app.models import User
+from app.models import AuthSession, TotpCredential, User
 
 security = HTTPBearer()
 
@@ -52,4 +53,68 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    if user.account_status != "ACTIVE":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is suspended.")
+
+    totp_result = await db.execute(
+        select(TotpCredential).where(TotpCredential.user_id == user.id)
+    )
+    credential = totp_result.scalar_one_or_none()
+    if payload.get("auth_method") != "pin" and (
+        credential is None or not credential.enabled or payload.get("mfa") is not True
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sign in with your authenticator code.",
+        )
+    session_id = payload.get("sid")
+    auth_session = await db.get(AuthSession, session_id) if isinstance(session_id, str) else None
+    if (
+        auth_session is None
+        or auth_session.user_id != user.id
+        or auth_session.revoked_at is not None
+        or auth_session.expires_at <= datetime.utcnow()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This session has expired or was revoked. Sign in again.",
+        )
+    user._trackguard_auth_time = payload.get("auth_time")
+    user._trackguard_session_id = auth_session.id
     return user
+
+
+async def get_admin_user(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    if current_user.role not in {"ADMIN", "SUPER_ADMIN"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required.")
+    return current_user
+
+
+async def get_super_admin_user(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    if current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Super-administrator access required.")
+    return current_user
+
+
+async def get_recent_admin_user(
+    current_user: User = Depends(get_admin_user),
+) -> User:
+    auth_time = getattr(current_user, "_trackguard_auth_time", None)
+    if not isinstance(auth_time, int) or time.time() - auth_time > 10 * 60:
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail="Sign out and sign in again before performing this sensitive action.",
+        )
+    return current_user
+
+
+async def get_recent_super_admin_user(
+    current_user: User = Depends(get_recent_admin_user),
+) -> User:
+    if current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Super-administrator access required.")
+    return current_user

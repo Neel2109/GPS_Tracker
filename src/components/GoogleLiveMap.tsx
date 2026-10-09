@@ -1,10 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
-import type { Device } from '../types';
 import { formatAccuracy, formatCoordinate, getLocationSourceLabel } from '../utils/location';
 
+interface LiveMapDevice {
+  id: string;
+  name: string;
+  status: string;
+  last_latitude: number | null;
+  last_longitude: number | null;
+  last_accuracy: number | null;
+  last_location_source: string | null;
+}
+
 interface Props {
-  devices: Device[];
+  devices: LiveMapDevice[];
   selectedDeviceId?: string | null;
   onDeviceClick?: (deviceId: string) => void;
   className?: string;

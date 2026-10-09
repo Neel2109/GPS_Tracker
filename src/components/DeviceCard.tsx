@@ -13,10 +13,13 @@ export default function DeviceCard({ device, expanded }: Props) {
 
   const statusPill = {
     online: { cls: 'tg-pill-online', label: 'Online' },
+    recently_offline: { cls: 'tg-pill-sleeping', label: 'Recently Offline' },
     offline: { cls: 'tg-pill-offline', label: 'Offline' },
     sleeping: { cls: 'tg-pill-sleeping', label: 'Sleeping' },
+    powered_off: { cls: 'tg-pill-offline', label: 'Powered Off' },
     low_battery: { cls: 'tg-pill-online', label: 'Low Battery' },
     location_unavailable: { cls: 'tg-pill-offline', label: 'No Location' },
+    unknown: { cls: 'tg-pill-offline', label: 'Unknown' },
   }[device.status] || { cls: 'tg-pill-offline', label: device.status };
 
   const timeAgo = device.last_seen ? getTimeAgo(device.last_seen) : 'Never';

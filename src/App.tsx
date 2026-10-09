@@ -1,12 +1,20 @@
-import { useState, useEffect } from 'react';
+import { Suspense, lazy, useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import type { User } from './types';
 import { getAccessToken, clearTokens, authAPI } from './services/api';
-import Unlock from './pages/Unlock';
-import Dashboard from './pages/Dashboard';
-import DeviceDetails from './pages/DeviceDetails';
-import History from './pages/History';
 import AppLayout from './components/AppLayout';
+
+const Unlock = lazy(() => import('./pages/Unlock'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const DeviceDetails = lazy(() => import('./pages/DeviceDetails'));
+const History = lazy(() => import('./pages/History'));
+const Proximity = lazy(() => import('./pages/Proximity'));
+const MobileTracker = lazy(() => import('./pages/MobileTracker'));
+const Geofences = lazy(() => import('./pages/Geofences'));
+const Alerts = lazy(() => import('./pages/Alerts'));
+const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const AccessRequests = lazy(() => import('./pages/AccessRequests'));
+const PrivacySettings = lazy(() => import('./pages/PrivacySettings'));
 
 export default function App() {
   const [user, setUser] = useState<User | null>(() => {
@@ -17,7 +25,7 @@ export default function App() {
 
   useEffect(() => {
     const token = getAccessToken();
-    if (token && !user) {
+    if (token) {
       authAPI.getMe()
         .then(u => {
           setUser(u as User);
@@ -29,6 +37,8 @@ export default function App() {
         })
         .finally(() => setLoading(false));
     } else {
+      localStorage.removeItem('user');
+      setUser(null);
       setLoading(false);
     }
   }, []);
@@ -72,14 +82,30 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/unlock" element={!user ? <Unlock onUnlock={handleUnlock} /> : <Navigate to="/dashboard" />} />
-      <Route element={user ? <AppLayout user={user} onLogout={handleLogout} /> : <Navigate to="/unlock" />}>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/devices/:id" element={<DeviceDetails />} />
-        <Route path="/history" element={<History />} />
-      </Route>
-      <Route path="*" element={<Navigate to={user ? "/dashboard" : "/unlock"} />} />
-    </Routes>
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-sm text-slate-500">Loading TrackGuard…</div>}>
+      <Routes>
+        <Route path="/unlock" element={!user ? <Unlock onUnlock={handleUnlock} /> : <Navigate to="/dashboard" />} />
+        <Route element={user ? <AppLayout user={user} onLogout={handleLogout} /> : <Navigate to="/unlock" />}>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/devices/:id" element={<DeviceDetails />} />
+          <Route path="/history" element={<History />} />
+          <Route path="/proximity" element={<Proximity />} />
+          <Route path="/geofences" element={<Geofences />} />
+          <Route path="/alerts" element={<Alerts />} />
+          <Route path="/access-requests" element={<AccessRequests />} />
+          <Route path="/privacy" element={<PrivacySettings />} />
+          <Route
+            path="/admin"
+            element={
+              user && (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN')
+                ? <AdminPanel user={user} />
+                : <Navigate to="/dashboard" replace />
+            }
+          />
+        </Route>
+        <Route path="/tracker" element={<MobileTracker />} />
+        <Route path="*" element={<Navigate to={user ? "/dashboard" : "/unlock"} />} />
+      </Routes>
+    </Suspense>
   );
 }

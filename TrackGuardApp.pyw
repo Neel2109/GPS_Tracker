@@ -165,6 +165,13 @@ class TrackGuardManager:
         agent_ok = self.agent_process and self.agent_process.poll() is None
         return server_ok and agent_ok
 
+    def agent_status(self) -> str:
+        if self.agent_process is None:
+            return "not started"
+        if self.agent_process.poll() is None:
+            return "running; see agent.log for connection state"
+        return "stopped; check agent.log and re-pair if needed"
+
 
 # ─── System Tray Icon ────────────────────────────────────────
 def run_with_tray(manager: TrackGuardManager):
@@ -217,6 +224,11 @@ def _run_pystray(manager, pystray, Image, ImageDraw):
     icon_image = _create_tray_icon_image()
     menu = pystray.Menu(
         pystray.MenuItem("Open Dashboard", on_open_dashboard, default=True),
+        pystray.MenuItem(
+            lambda item: f"Agent: {manager.agent_status()}",
+            lambda icon, item: None,
+            enabled=False,
+        ),
         pystray.MenuItem("Restart Agent", on_restart_agent),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("View Logs", on_view_logs),
@@ -239,9 +251,13 @@ def _run_tkinter_fallback(manager: TrackGuardManager):
     root.resizable(False, False)
     root.configure(bg="#0f0f0f")
 
-    # Minimize to tray-like behavior: hide on close, but keep running
     def on_close():
-        root.withdraw()  # Hide instead of destroy
+        if messagebox.askyesno(
+            "Quit TrackGuard",
+            "Quit TrackGuard and stop its background tracking processes?",
+            parent=root,
+        ):
+            on_quit()
 
     def on_quit():
         manager.stop()
@@ -258,10 +274,23 @@ def _run_tkinter_fallback(manager: TrackGuardManager):
         fg="white", bg="#0f0f0f",
     ).pack(pady=(20, 4))
 
+    agent_status = tk.StringVar(value="Starting the TrackGuard agent…")
     tk.Label(
-        root, text="Server and Agent are running", font=("Segoe UI", 10),
+        root, textvariable=agent_status, font=("Segoe UI", 10),
         fg="#22c55e", bg="#0f0f0f",
     ).pack()
+
+    def update_agent_status():
+        process = manager.agent_process
+        if process is None:
+            agent_status.set("Agent was not started. Check logs.")
+        elif process.poll() is None:
+            agent_status.set("Agent process is running. Connection status: logs/agent.log")
+        else:
+            agent_status.set("Agent stopped. Check logs/agent.log and re-pair if needed.")
+        root.after(1500, update_agent_status)
+
+    update_agent_status()
 
     tk.Label(
         root, text=f"Dashboard: http://localhost:{manager.port}",
@@ -287,39 +316,11 @@ def _run_tkinter_fallback(manager: TrackGuardManager):
     ).pack(side="left", padx=6)
 
     tk.Label(
-        root, text="Close this window to minimize. Click Quit to stop.",
+        root,         text="Use the system tray to keep TrackGuard running, or choose Quit to stop.",
         font=("Segoe UI", 8), fg="#666", bg="#0f0f0f",
     ).pack(pady=(8, 0))
 
     root.mainloop()
-
-
-# ─── Startup Registration ────────────────────────────────────
-def register_windows_startup():
-    """Register TrackGuard to start automatically on Windows login."""
-    try:
-        import winreg
-        key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
-
-        if getattr(sys, 'frozen', False):
-            # When bundled with PyInstaller, register the .exe itself
-            command = f'"{sys.executable}"'
-        else:
-            # When running from source, use pythonw.exe
-            pythonw = Path(PYTHON).parent / "pythonw.exe"
-            if not pythonw.exists():
-                pythonw = Path(PYTHON)
-            launcher = ROOT / "TrackGuardApp.pyw"
-            command = f'"{pythonw}" "{launcher}"'
-
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-            winreg.SetValueEx(key, "TrackGuard", 0, winreg.REG_SZ, command)
-
-        logger.info(f"Registered for Windows startup: {command}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to register startup: {e}")
-        return False
 
 
 # ─── Error Dialog ─────────────────────────────────────────────
@@ -366,13 +367,10 @@ def main():
     # Step 3: Start the agent
     manager.start_agent()
 
-    # Step 4: Register for auto-start on Windows login
-    register_windows_startup()
-
-    # Step 5: Open the dashboard
+    # Open the dashboard only when the user launches TrackGuard.
     manager.open_dashboard()
 
-    # Step 6: Keep running with system tray / UI
+    # Keep the background processes managed by a visible system-tray app.
     manager.running = True
     try:
         run_with_tray(manager)

@@ -6,13 +6,16 @@ import logging
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from app.config import settings
-from app.database import init_db
-from app.routers import auth, devices, locations, commands, websocket
+from app.database import engine, init_db
+from app.routers import access_requests, admin, auth, devices, locations, commands, websocket, tracking
+from app.routers import privacy
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 # Configure logging
 logging.basicConfig(
@@ -62,10 +65,14 @@ app.add_middleware(
 
 # Include API routers
 app.include_router(auth.router)
+app.include_router(admin.router)
+app.include_router(access_requests.router)
 app.include_router(devices.router)
 app.include_router(locations.router)
 app.include_router(commands.router)
 app.include_router(websocket.router)
+app.include_router(tracking.router)
+app.include_router(privacy.router)
 
 
 @app.get("/api")
@@ -80,8 +87,17 @@ async def api_root():
 
 @app.get("/health")
 async def health():
-    """Health check endpoint."""
-    return {"status": "healthy"}
+    """Report API and database readiness."""
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+    except SQLAlchemyError:
+        logger.exception("Health check database probe failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"status": "unhealthy", "database": "unavailable"},
+        )
+    return {"status": "healthy", "database": "healthy"}
 
 
 # ─── Serve React Frontend (SPA) ──────────────────────────────

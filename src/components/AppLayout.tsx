@@ -20,6 +20,14 @@ export default function AppLayout({ user, onLogout }: Props) {
   const navItems = [
     { to: '/dashboard', icon: <DashIcon />, label: 'Dashboard' },
     { to: '/history', icon: <HistIcon />, label: 'Location history' },
+    { to: '/proximity', icon: <ProximityIcon />, label: 'Device proximity' },
+    { to: '/geofences', icon: <GeofenceIcon />, label: 'Geofences' },
+    { to: '/alerts', icon: <AlertsIcon />, label: 'Alerts' },
+    { to: '/access-requests', icon: <AccessIcon />, label: 'Access approvals' },
+    { to: '/privacy', icon: <PrivacyIcon />, label: 'Privacy & data' },
+    ...(user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
+      ? [{ to: '/admin', icon: <AdminIcon />, label: 'Admin console' }]
+      : []),
   ];
 
   return (
@@ -110,6 +118,62 @@ function HistIcon() {
     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 3v5h5M4.5 15a8 8 0 1 0 .7-6.8L3 8" />
       <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
+function GeofenceIcon() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </svg>
+  );
+}
+
+function ProximityIcon() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="5" cy="12" r="2.5" />
+      <circle cx="19" cy="12" r="2.5" />
+      <path d="M7.5 12h9M9 8.5l-2 3.5 2 3.5M15 8.5l2 3.5-2 3.5" />
+    </svg>
+  );
+}
+
+function AlertsIcon() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M10 21h4" />
+    </svg>
+  );
+}
+
+function AdminIcon() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3 20 6v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" />
+      <path d="M9 12h6M12 9v6" />
+    </svg>
+  );
+}
+
+function AccessIcon() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+      <path d="m8 12 2 2 4-4" />
+    </svg>
+  );
+}
+
+function PrivacyIcon() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3 20 6v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" />
+      <path d="M9 12h6" />
     </svg>
   );
 }

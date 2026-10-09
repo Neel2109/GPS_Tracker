@@ -7,15 +7,16 @@ import subprocess
 import sys
 import tempfile
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List
 from urllib.parse import urlsplit
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app import models, schemas, security
 from app.database import get_db
+from app.services.proximity import build_proximity_snapshot
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
 
@@ -112,6 +113,23 @@ async def list_devices(
 ):
     result = await db.execute(select(models.Device).where(models.Device.user_id == current_user.id))
     return result.scalars().all()
+
+@router.get("/proximity", response_model=schemas.DeviceProximitySnapshot)
+async def get_device_proximity(
+    threshold_meters: int = Query(default=250, ge=25, le=5000),
+    current_user: models.User = Depends(security.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(models.Device)
+        .where(models.Device.user_id == current_user.id)
+        .order_by(models.Device.name, models.Device.id)
+    )
+    return build_proximity_snapshot(
+        list(result.scalars().all()),
+        now=datetime.now(timezone.utc),
+        threshold_meters=threshold_meters,
+    )
 
 @router.post("/pair/generate", response_model=schemas.PairingCodeResponse)
 async def generate_code(

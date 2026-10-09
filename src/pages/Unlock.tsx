@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { User } from '../types';
+import type { AuthResponse, User } from '../types';
 import { authAPI, setTokens } from '../services/api';
 
 interface Props { onUnlock: (user: User) => void; }
@@ -14,15 +14,17 @@ export default function Unlock({ onUnlock }: Props) {
     setError('');
     setLoading(true);
     try {
-      const res = await authAPI.unlock(pin);
+      const res: AuthResponse = await authAPI.unlock(pin);
       setTokens(res.access_token, res.refresh_token);
       onUnlock(res.user);
-    } catch (err: any) {
-      setError(err.message || 'Could not unlock TrackGuard');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not unlock TrackGuard');
     } finally {
       setLoading(false);
     }
   };
+
+  const canSubmit = !loading && pin.length >= 6;
 
   return (
     <div
@@ -59,10 +61,10 @@ export default function Unlock({ onUnlock }: Props) {
           className="animate-in"
         >
           <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: '28px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>
-            Unlock TrackGuard
+            TrackGuard
           </h1>
           <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)', marginBottom: '32px' }}>
-            Enter your local PIN to continue
+            Enter your PIN to continue.
           </p>
 
           {error && (
@@ -74,7 +76,6 @@ export default function Unlock({ onUnlock }: Props) {
               {error}
             </div>
           )}
-
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom: '24px' }}>
               <div style={{
@@ -83,7 +84,7 @@ export default function Unlock({ onUnlock }: Props) {
                 borderRadius: '14px', padding: '0 16px', transition: 'all 0.2s',
               }}>
                 <input
-                  id="unlock-pin"
+                  id="unlock-phone-number"
                   type="password"
                   inputMode="numeric"
                   autoComplete="current-password"
@@ -92,32 +93,32 @@ export default function Unlock({ onUnlock }: Props) {
                   value={pin}
                   onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 12))}
                   required
-                  placeholder="6–12 digit PIN"
+                  placeholder="Enter PIN"
+                  aria-label="PIN"
                   style={{
                     flex: 1, background: 'transparent', border: 'none', outline: 'none',
                     padding: '14px 0', fontSize: '14px', color: '#1A1A1A',
-                    fontFamily: "'Inter', sans-serif",
+                    fontFamily: "'Inter', sans-serif", letterSpacing: '0.2em',
                   }}
                 />
               </div>
             </div>
-
             <button
               id="unlock-submit"
               type="submit"
-              disabled={loading || pin.length < 6}
+              disabled={!canSubmit}
               style={{
                 width: '100%', padding: '15px', borderRadius: '14px',
                 background: '#688A4E',
                 border: 'none',
                 color: '#fff', fontSize: '15px', fontWeight: 600,
-                cursor: loading || pin.length < 6 ? 'not-allowed' : 'pointer',
-                opacity: loading || pin.length < 6 ? 0.6 : 1,
+                cursor: canSubmit ? 'pointer' : 'not-allowed',
+                opacity: canSubmit ? 1 : 0.6,
                 transition: 'all 0.2s ease',
                 fontFamily: "'Inter', sans-serif",
               }}
             >
-              {loading ? 'Unlocking...' : 'Unlock'}
+              {loading ? 'Verifying...' : 'Sign in'}
             </button>
           </form>
         </div>

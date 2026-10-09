@@ -5,7 +5,7 @@ import type { Device, WSMessage } from '../types';
 import { commandAPI, deviceAPI } from '../services/api';
 import { wsService } from '../services/websocket';
 import type { DashboardSearchContext } from '../components/AppLayout';
-import GoogleLiveMap from '../components/GoogleLiveMap';
+import LiveMap from '../components/LiveMap';
 import PairDevice from '../components/PairDevice';
 import { formatAccuracy, formatCoordinate, formatLocationAge, getLocationSourceLabel } from '../utils/location';
 
@@ -255,7 +255,7 @@ export default function Dashboard() {
               </p>
             </div>
           )}
-          <GoogleLiveMap
+          <LiveMap
             devices={devicesWithLocation}
             selectedDeviceId={activeDevice?.id}
             onDeviceClick={id => {

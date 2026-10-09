@@ -1,7 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
-import type { Device } from '../types';
+import { renderToString } from 'react-dom/server';
+import { Laptop, Smartphone, Watch, Car, Bike, User, MapPin, Tablet } from 'lucide-react';
+import type { Device, Location } from '../types';
 import { formatAccuracy, formatCoordinate, getLocationSourceLabel } from '../utils/location';
+import { locationAPI } from '../services/api';
 
 interface Props {
   devices: Device[];
@@ -12,22 +15,67 @@ interface Props {
   height?: string;
 }
 
-function createMarkerIcon(status: string, isSelected: boolean) {
-  const color = status === 'online' ? '#00B894' : status === 'sleeping' ? '#6C5CE7' : '#B2BEC3';
-  const size = isSelected ? 16 : 12;
-  const pulse = isSelected ? 34 : 26;
+const getDeviceIcon = (device: Device, size = 18) => {
+  const isMoving = device.last_longitude && (device as any).movement_state && (device as any).movement_state !== 'STATIONARY';
+
+  if (isMoving) {
+    const state = (device as any).movement_state;
+    if (state === 'DRIVING') return <Car size={size} />;
+    if (state === 'CYCLING') return <Bike size={size} />;
+    if (state === 'WALKING') return <User size={size} />;
+    return <Car size={size} />; // Default moving
+  }
+
+  switch (device.device_type) {
+    case 'laptop':
+    case 'desktop': return <Laptop size={size} />;
+    case 'iphone':
+    case 'android': return <Smartphone size={size} />;
+    case 'smartwatch': return <Watch size={size} />;
+    case 'tablet':
+    case 'ipad': return <Tablet size={size} />;
+    default: return <MapPin size={size} />;
+  }
+};
+
+function createMarkerIcon(device: Device, isSelected: boolean) {
+  const color = device.status === 'online' ? '#00B894' : device.status === 'sleeping' ? '#6C5CE7' : '#B2BEC3';
+  const size = isSelected ? 36 : 30;
+
+  const isMoving = (device as any).movement_state && (device as any).movement_state !== 'STATIONARY';
+  const heading = (device as any).last_heading || 0;
+
+  const iconHtml = renderToString(
+    <div style={{
+      width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: 'white'
+    }}>
+      {getDeviceIcon(device, isSelected ? 20 : 16)}
+    </div>
+  );
 
   return L.divIcon({
     className: 'device-marker',
     html: `
-      <div style="width:${pulse}px;height:${pulse}px;display:flex;align-items:center;justify-content:center;position:relative;">
-        ${status === 'online' ? `<div style="width:${pulse}px;height:${pulse}px;border-radius:50%;background:${color}18;position:absolute;animation:marker-ripple 2s ease-out infinite;"></div>` : ''}
-        <div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 2px 8px ${color}60;position:relative;z-index:2;"></div>
+      <div style="
+        width:${size}px;
+        height:${size}px;
+        background:${color};
+        border-radius:${isMoving ? '8px' : '50%'};
+        border:2px solid #fff;
+        box-shadow:0 4px 12px ${color}80;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        transform: rotate(${isMoving ? heading : 0}deg);
+        transition: transform 0.3s ease;
+      ">
+        ${iconHtml}
       </div>
     `,
-    iconSize: [pulse, pulse],
-    iconAnchor: [pulse / 2, pulse / 2],
-    popupAnchor: [0, -pulse / 2],
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
   });
 }
 
@@ -35,7 +83,19 @@ export default function LiveMap({ devices, selectedDeviceId, onDeviceClick, clas
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const circlesRef = useRef<Map<string, L.Circle>>(new Map());
+  const polylinesRef = useRef<Map<string, L.Polyline>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const [historyPoints, setHistoryPoints] = useState<Record<string, Location[]>>({});
+
+  // Fetch history for routing
+  useEffect(() => {
+    devices.forEach(d => {
+      locationAPI.getHistory(d.id, { period: 'today', limit: 200 }).then(pts => {
+        setHistoryPoints(prev => ({ ...prev, [d.id]: pts }));
+      }).catch(console.error);
+    });
+  }, [devices.length]); // Refresh history if devices change length
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -46,7 +106,6 @@ export default function LiveMap({ devices, selectedDeviceId, onDeviceClick, clas
       attributionControl: false,
     });
 
-    // Light, clean map tiles — matching the reference image's map style
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
     }).addTo(map);
@@ -66,7 +125,7 @@ export default function LiveMap({ devices, selectedDeviceId, onDeviceClick, clas
       activeIds.add(device.id);
       const pos: L.LatLngExpression = [device.last_latitude, device.last_longitude];
       const isSelected = device.id === selectedDeviceId;
-      const icon = createMarkerIcon(device.status, isSelected);
+      const icon = createMarkerIcon(device, isSelected);
 
       let marker = markersRef.current.get(device.id);
       if (marker) {
@@ -88,60 +147,49 @@ export default function LiveMap({ devices, selectedDeviceId, onDeviceClick, clas
           <div style="font-size:12px;color:#636E72;line-height:1.7;">
             ${formatCoordinate(device.last_latitude, 'latitude')}, ${formatCoordinate(device.last_longitude, 'longitude')}<br/>
             Accuracy: ${formatAccuracy(device.last_accuracy)}<br/>
-            Source: ${getLocationSourceLabel(device.last_location_source)}<br/>
             ${device.battery_level != null ? `Battery: ${device.battery_level}%` : ''}
           </div>
         </div>
       `);
 
-      if (showAccuracy && device.last_accuracy != null && device.last_accuracy > 0) {
-        let circle = circlesRef.current.get(device.id);
-        if (circle) {
-          circle.setLatLng(pos);
-          circle.setRadius(device.last_accuracy);
-        } else {
-          circle = L.circle(pos, {
-            radius: device.last_accuracy,
-            fillColor: '#6C5CE7',
-            fillOpacity: 0.06,
-            color: '#6C5CE7',
-            opacity: 0.15,
-            weight: 1.5,
-          }).addTo(map);
-          circlesRef.current.set(device.id, circle);
-        }
+      // Route Polyline
+      const pts = historyPoints[device.id] || [];
+      const latlngs: L.LatLngExpression[] = pts.map(p => [p.latitude, p.longitude]);
+      latlngs.push(pos); // include current live position
+
+      let polyline = polylinesRef.current.get(device.id);
+      if (polyline) {
+        polyline.setLatLngs(latlngs);
       } else {
-        const circle = circlesRef.current.get(device.id);
-        if (circle) {
-          circle.remove();
-          circlesRef.current.delete(device.id);
-        }
+        polyline = L.polyline(latlngs, {
+          color: device.status === 'online' ? '#00B894' : '#6C5CE7',
+          weight: 4,
+          opacity: 0.6,
+          dashArray: '8, 8',
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(map);
+        polylinesRef.current.set(device.id, polyline);
       }
+
     });
 
-    // Remove stale markers/circles
+    // Cleanup stale markers/polylines
     markersRef.current.forEach((marker, id) => {
       if (!activeIds.has(id)) { marker.remove(); markersRef.current.delete(id); }
     });
-    circlesRef.current.forEach((circle, id) => {
-      if (!activeIds.has(id)) { circle.remove(); circlesRef.current.delete(id); }
+    polylinesRef.current.forEach((line, id) => {
+      if (!activeIds.has(id)) { line.remove(); polylinesRef.current.delete(id); }
     });
 
-    // Auto-fit
+    // Auto-fit or follow
     if (selectedDeviceId) {
       const sel = devices.find(d => d.id === selectedDeviceId);
       if (sel?.last_latitude != null && sel?.last_longitude != null) {
         map.setView([sel.last_latitude, sel.last_longitude], 16, { animate: true });
       }
-    } else {
-      const valid = devices.filter(d => d.last_latitude != null && d.last_longitude != null);
-      if (valid.length === 1) {
-        map.setView([valid[0].last_latitude!, valid[0].last_longitude!], 15, { animate: true });
-      } else if (valid.length > 1) {
-        map.fitBounds(L.latLngBounds(valid.map(d => [d.last_latitude!, d.last_longitude!] as L.LatLngTuple)), { padding: [50, 50], animate: true });
-      }
     }
-  }, [devices, selectedDeviceId, showAccuracy, onDeviceClick]);
+  }, [devices, selectedDeviceId, showAccuracy, onDeviceClick, historyPoints]);
 
   return (
     <div

@@ -135,11 +135,77 @@ py -3.12 -m venv .venv312
 .\.venv312\Scripts\python.exe -m pip install -r installer\requirements-build.txt
 ```
 
-Set a private 6–12 digit `LOCAL_PIN` in the root `.env` file before starting
-the app. Do not commit or share this PIN. If the database contains exactly one
-account, the PIN unlocks it; otherwise set `LOCAL_USER_EMAIL` to the account
-that owns the devices. On a new empty database, TrackGuard creates a local
-owner account automatically. The unlock endpoint limits failed attempts.
+Copy `.env.example` to `.env`, then set a private 6–12 digit `LOCAL_PIN` and a
+unique `JWT_SECRET` before starting the app. Do not commit or share these
+values. The web dashboard and Android app use `LOCAL_PIN` as their only
+interactive sign-in method for the local owner. The owner account is selected
+with `LOCAL_USER_EMAIL`; on an empty database, TrackGuard creates that account.
+To bootstrap the first platform super-administrator, also set `LOCAL_USER_PHONE`
+and `SUPER_ADMIN_PHONE` to the same phone number in E.164 format (for example,
+`+14155550123`). The owner signs in directly with the configured local PIN;
+phone, SMS, invitation, and authenticator choices are not presented on the
+client sign-in screens. Keep the PIN private and restrict the server to a
+trusted network because PIN-only sign-in is a single authentication factor.
+
+New users are provisioned by an administrator; self-service registration is
+not enabled because authenticator codes do not prove control of a phone number.
+Account creation returns a single-use invitation link/token that expires after
+48 hours. Share it only through a private channel. The recipient verifies
+ownership of the invited phone number by SMS, claims the invitation, and
+creates their own authenticator; the setup secret is not sent to the
+administrator. Invitations can be reissued, which revokes any unused invite
+for that account. New and existing phone-based accounts must verify their
+number before activation or sign-in. SMS verification and recovery require the
+server's Twilio settings. Verification codes are short-lived, single-use,
+hashed in the database, and rate-limited. The authenticator secret is encrypted
+in the database using `TOTP_ENCRYPTION_KEY` or, if unset, a key derived from
+`JWT_SECRET`; keep that setting stable and back up authenticator access before
+reinstalling or moving the server. Codes are single-use per time step, and
+failed PIN and code attempts are rate-limited.
+
+After an administrator signs in, the **Admin console** allows account
+provisioning, role/status management, authenticator resets, active-session
+review/revocation, incident triage, and paged/searchable account, device, and
+audit tables. Sensitive account and authenticator actions require the
+administrator to have signed in within the last ten minutes. Only a
+super-administrator can grant administrator roles or reset another user's
+authenticator. The platform device inventory intentionally does not expose
+coordinates or location history.
+An administrator who needs another account's location must submit a request
+with a reason and a 15-minute, 1-hour, or 4-hour duration. The owner approves,
+denies, or revokes it from **Location access**. Approved access is read-only,
+expires automatically, and every location/history read is audited. Active
+grants stream approved live locations to the admin map. Device commands require a separate,
+owner-approved **Device control** grant for one selected device; it expires
+after 15 minutes, and the administrator must type that device's exact name for
+each command. Supported Windows agents allow lock, sleep, restart, shutdown,
+and Lost Mode; Android allows Lost Mode only. Arbitrary shell commands, device
+transfer, and account-owner changes are not available. Command requests and
+results are audited. Existing broad device-control requests are revoked during
+upgrade because they do not identify an approved device. The application
+automatically creates its tables at startup and adds missing
+phone-verification, alert-lifecycle, role, status, phone, and last-login columns
+to existing SQLite databases. Existing phone accounts must verify ownership
+before their next sign-in; existing accounts become `USER`;
+configure the local owner's phone and super-admin phone explicitly to bootstrap
+the first administrator. Keep database backups before upgrades.
+
+Local development defaults to `trackguard.db` through SQLite and creates its
+schema on startup. For a persistent PostgreSQL deployment, install Docker
+Desktop, copy `.env.example` to `.env`, replace every placeholder (especially
+`POSTGRES_PASSWORD`, `JWT_SECRET`, and `LOCAL_PIN`), then run:
+
+```powershell
+docker compose up --build -d
+```
+
+The Docker stack runs the API and built web dashboard on port 8000 and stores
+PostgreSQL data in the named `trackguard-postgres` volume. Check
+`http://localhost:8000/health` after startup. `docker compose down` preserves
+the database volume; do not use `docker compose down -v` unless you intend to
+delete the database. SMS verification requires the Twilio settings described
+below; without them, activation/sign-in for unverified phone accounts is
+blocked rather than treating an unverified number as owned.
 
 Run the backend and frontend together with one command from the project root:
 
@@ -153,6 +219,21 @@ This starts the backend at `http://localhost:8000` and the dashboard at
 `npm run dev:web` starts only Vite; API requests then require the backend to be
 started separately.
 
+### Windows desktop launcher
+
+Build the no-console desktop launcher with:
+
+```powershell
+.\.venv312\Scripts\python.exe build_exe.py
+```
+
+This creates `dist\tracker.exe`. Double-clicking it starts the server and
+agent without opening command windows, then opens the dashboard. TrackGuard
+does not register itself to launch at Windows sign-in; open the dashboard by
+running the EXE. While it is active, keep TrackGuard visible in the system
+tray. Quit from the tray (or confirm Quit in the fallback window) to stop the
+server and agent.
+
 The backend API documentation is available at `http://localhost:8000/docs`;
 `http://localhost:8000/health` is the health-check endpoint. To build only the
 frontend, run `npm run build`. To serve the built frontend and API together,
@@ -164,15 +245,26 @@ port or bind address with `--port` and `--host`.
 ## Configuration
 
 Create a private `.env` file in the project root. It is deliberately ignored by
-Git. The most useful settings are:
+Git. `LOCAL_PIN` is the exact server-side PIN used to sign in to the local owner
+account; it is not the phone's screen-lock PIN. If PIN verification fails,
+check the value privately against the API server's `.env` and restart the API
+process after changing it. Do not paste the PIN into chat, logs, or support
+requests. The most useful settings are:
 
 | Variable | Purpose |
 | --- | --- |
-| `LOCAL_PIN` | Required 6–12 digit local dashboard unlock PIN. |
+| `LOCAL_PIN` | Required 6–12 digit PIN for local-owner sign-in. |
 | `LOCAL_USER_EMAIL` | Selects the local TrackGuard account when the database contains multiple accounts. |
 | `LOCAL_USER_NAME` | Display name used when the owner account is created on an empty database. |
+| `LOCAL_USER_PHONE` | E.164 phone number assigned to the configured local owner during PIN-based setup. |
+| `SUPER_ADMIN_PHONE` | E.164 phone number that bootstraps the local owner as the initial `SUPER_ADMIN`; set it to the same value as `LOCAL_USER_PHONE`. |
 | `SECRET_KEY` or `JWT_SECRET` | Secret used to sign authentication tokens. Set a unique, strong value before use. |
-| `DATABASE_URL` | SQLAlchemy database URL. The application defaults to a local SQLite database named `trackguard.db`. |
+| `TOTP_ENCRYPTION_KEY` | Optional independent secret used to encrypt authenticator keys in the database. If omitted, the key is derived from `JWT_SECRET`; keep whichever source you use stable. |
+| `TWILIO_ACCOUNT_SID` | Twilio account SID required for phone verification and recovery codes. |
+| `TWILIO_AUTH_TOKEN` | Private Twilio API token; required for phone verification and recovery; keep it only in the server environment. |
+| `TWILIO_FROM_NUMBER` | Twilio-enabled sender number in E.164 format, required for verification and recovery SMS. |
+| `PHONE_RECOVERY_HMAC_KEY` | Private random key of at least 32 characters used to hash phone verification/recovery codes and phone/IP identifiers. |
+| `DATABASE_URL` | Async SQLAlchemy URL. Defaults to `sqlite+aiosqlite:///./trackguard.db`; Docker Compose points the app at PostgreSQL using asyncpg. |
 | `CORS_ORIGINS` | Comma-separated browser origins allowed by the API. The development defaults allow localhost. |
 | `VITE_GOOGLE_MAPS_API_KEY` | Restricted browser key used by the Google Maps frontend. |
 
@@ -194,6 +286,38 @@ VITE_GOOGLE_MAPS_API_KEY=your-restricted-browser-key
 
 Restart Vite after changing `.env`. Without a key, the dashboard displays setup
 guidance in the map panel instead of loading third-party map tiles.
+
+### Sign in and manage platform accounts
+
+The web dashboard and Android app expose only PIN sign-in for the local owner.
+The PIN is read from `LOCAL_PIN` on the API server. Phone-based invitation,
+activation, SMS verification, and authenticator recovery controls are not
+available on these sign-in screens. The backend retains the corresponding
+account-management endpoints for compatibility; configuring Twilio is still
+required for any server-side phone verification or recovery operations.
+
+Users can open **Privacy & data** to export their account data as JSON or
+permanently delete location history from their own devices. History is retained
+until the owner deletes it; deleting it also removes the points used for trips
+and route playback, but does not delete the account or devices. Trip reports
+split segments at reporting gaps over 30 minutes and estimate stops from
+reported stationary samples lasting at least five minutes.
+
+Use the **Admin console** from an `ADMIN` or `SUPER_ADMIN` account to create and
+manage accounts. The first `SUPER_ADMIN` is established by the matching
+`LOCAL_USER_PHONE` and `SUPER_ADMIN_PHONE` server settings, never by a client
+request. Administrator account and device-inventory views are audited. To view
+another account's device location, use the console's reasoned access request;
+the owner must approve it and can revoke it at any time. This grant expires
+after the selected duration and applies only to location reads, not device
+control.
+
+Successful sign-ins create server-tracked sessions. Signing out or revoking a
+session invalidates its access and refresh tokens. Existing stateless tokens
+issued before session tracking was enabled are no longer accepted; sign in
+again after upgrading. The admin incident center exposes incident details
+without precise coordinates and records acknowledge/resolve changes in the
+audit log.
 
 ### Pair and run the Windows agent
 
@@ -241,6 +365,8 @@ src/                 React/TypeScript dashboard
 public/              Frontend static assets and PWA manifest
 scripts/dev.mjs      Starts the backend and Vite development server together
 run.py               Starts FastAPI and optionally builds the frontend
+Dockerfile           Builds the React dashboard and API image
+docker-compose.yml   PostgreSQL-backed application deployment
 requirements.txt     Python backend dependencies
 package.json         Frontend dependencies and npm scripts
 ```
@@ -249,6 +375,11 @@ package.json         Frontend dependencies and npm scripts
 
 - **Live Location** — Real-time device tracking on interactive dark map
 - **Location History** — View movement routes with date filtering
+- **Trip Segments** — Derive route segments from recorded points, split after 30-minute reporting gaps, and replay the selected route
+- **Device Proximity** — Compare the signed-in owner's device pairs using last-reported positions, reported GPS accuracy, a 10-minute freshness limit, and a 5-minute maximum fix-time skew; uncertain or stale fixes are labeled instead of presented as current
+- **Possible Device Separation** — Flag a cautious possible-left-behind pattern only when fresh, accuracy-adjusted fixes show meaningful separation and one device reported movement while the other reported stationary
+- **Geofences** — Create, enable/disable, and delete circular saved places; show enter/exit alerts after a device reports a crossing
+- **Incident Center and SOS** — Persist offline and low-battery incidents alongside SOS/geofence alerts; acknowledge or resolve them, retain status-transition history, and receive live web updates
 - **Battery Monitor** — Live battery level with charging status
 - **Network Info** — MAC, local IP, public IP, connection type
 - **Remote Lock** — Lock Windows session instantly
@@ -267,6 +398,8 @@ documentation at `/docs` while the server is running.
 
 ```
 POST /api/auth/unlock
+POST /api/auth/totp/setup
+POST /api/auth/totp/confirm
 POST /api/auth/refresh
 POST /api/auth/logout
 GET  /api/auth/me
@@ -278,6 +411,19 @@ DELETE /api/devices/{id}
 
 GET  /api/devices/{id}/location
 GET  /api/devices/{id}/locations
+GET  /api/devices/{id}/trips
+GET  /api/devices/{id}/trips/{trip_id}/locations
+GET  /api/devices/proximity?threshold_meters=250
+
+GET    /api/geofences
+POST   /api/geofences
+PATCH  /api/geofences/{id}
+DELETE /api/geofences/{id}
+
+GET  /api/alerts
+POST /api/alerts/{id}/read
+POST /api/alerts/read-all
+POST /api/alerts/sos
 
 POST /api/devices/{id}/commands/lock
 POST /api/devices/{id}/commands/sleep
@@ -291,6 +437,15 @@ WS   /ws/dashboard/{user_id}
 The WebSocket connection is used for device registration/telemetry and
 dashboard updates. See the interactive API documentation for request schemas,
 authentication requirements, and response shapes.
+
+Trip segments are computed from stored location points and split when the gap
+between reports exceeds 30 minutes; distance is the sum of straight-line
+distances between reported points, not a map-matched road distance. Geofence
+crossings are evaluated when an authorized paired device uploads a location.
+The first report initializes inside/outside state without generating an entry
+alert. SOS creates an in-app TrackGuard alert only; it does not contact
+emergency services, notify external contacts, or guarantee delivery while the
+dashboard is disconnected.
 
 ## Security and privacy
 
@@ -318,6 +473,7 @@ authentication requirements, and response shapes.
 | `npm run dev` cannot find Python | Create `.venv312` as shown above and install `requirements.txt`. The development script searches for `.venv312` and `.venv`. |
 | Dashboard cannot reach the API | Confirm the backend is running on port 8000, the Vite proxy is active, and the server firewall allows connections from the tracked device where needed. |
 | Device does not appear after installer setup | Keep the pairing dialog open, verify the server URL is reachable from that laptop, and check its `TrackGuard\agent.log` under `%LOCALAPPDATA%`. |
+| Agent log shows WebSocket HTTP 403 | The saved device pairing is not present in the server database or the token is no longer accepted. Add/pair this PC again from the dashboard; the agent now stops retrying and records this recovery hint in `logs\agent.log`. |
 | Location is missing or approximate | Enable Windows Location Services and grant the relevant permissions. IP fallback is approximate and may not identify the laptop's physical location. |
 | Google map does not load | Confirm the Maps JavaScript API and billing are enabled, the browser key is referrer-restricted correctly, and Vite was restarted after changing `.env`. |
 | PIN unlock is unavailable | Set `LOCAL_PIN` to 6–12 digits in the server `.env` and restart the backend. The endpoint temporarily rate-limits repeated incorrect attempts. |

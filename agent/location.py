@@ -91,6 +91,9 @@ try {
             latitude = $coord.Point.Position.Latitude
             longitude = $coord.Point.Position.Longitude
             accuracy = $coord.Accuracy
+            altitude = if ($null -ne $coord.Point.Position.Altitude) { $coord.Point.Position.Altitude } else { $null }
+            speed = if ($null -ne $coord.Speed) { $coord.Speed } else { $null }
+            heading = if ($null -ne $coord.Heading) { $coord.Heading } else { $null }
             source = $source
         }
         $result | ConvertTo-Json

@@ -85,6 +85,18 @@ class TrackGuardAgent:
             try:
                 await self._connect_and_run()
             except Exception as e:
+                response = getattr(e, "response", None)
+                status_code = getattr(e, "status_code", None)
+                if status_code is None:
+                    status_code = getattr(response, "status_code", None)
+                if status_code == 403:
+                    logger.error(
+                        "The server rejected this device connection (HTTP 403). "
+                        "The saved pairing may be stale or belong to a different server database. "
+                        "Pair this PC again from the TrackGuard dashboard."
+                    )
+                    self.running = False
+                    break
                 logger.error(f"Connection error: {e}")
 
             if self.running:
@@ -235,6 +247,12 @@ class TrackGuardAgent:
                         },
                     })
                 result = {"status": "success", "result": "Location sent"}
+            elif command == "ENABLE_LOST_MODE":
+                self.lost_mode = True
+                result = {"status": "success", "result": "Lost Mode enabled"}
+            elif command == "DISABLE_LOST_MODE":
+                self.lost_mode = False
+                result = {"status": "success", "result": "Lost Mode disabled"}
             else:
                 result = await execute_command(command)
 
