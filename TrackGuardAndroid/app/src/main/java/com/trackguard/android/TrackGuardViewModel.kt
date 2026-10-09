@@ -313,7 +313,7 @@ class TrackGuardViewModel(application: Application) : AndroidViewModel(applicati
                     state = state.copy(
                         isLoading = false,
                         signedIn = false,
-                        error = "Your session expired. Sign in again with your phone number and authenticator code.",
+                        error = "Your session expired. Sign in again with your PIN.",
                     )
                 } else {
                     state = state.copy(

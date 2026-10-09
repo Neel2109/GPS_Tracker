@@ -36,19 +36,6 @@ class TrackGuardApi(context: Context) {
         return response.getJSONObject("user")
     }
 
-    fun signInWithPhone(serverUrl: String, phoneNumber: String, otpCode: String): JSONObject {
-        credentials.serverUrl = validateServerUrl(serverUrl)
-        val response = request(
-            "POST",
-            "/api/auth/phone/login",
-            body = JSONObject()
-                .put("phone_number", normalizePhoneNumber(phoneNumber))
-                .put("otp_code", otpCode),
-        )
-        saveOwnerTokens(response)
-        return response.getJSONObject("user")
-    }
-
     fun activatePhoneAccount(serverUrl: String, phoneNumber: String, otpCode: String): JSONObject {
         credentials.serverUrl = validateServerUrl(serverUrl)
         val response = request(

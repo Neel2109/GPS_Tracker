@@ -82,7 +82,6 @@ async function apiFetch<T>(
 
   const isSignInRequest = [
     '/api/auth/unlock',
-    '/api/auth/phone/login',
     '/api/auth/phone/activate',
     '/api/auth/totp/setup',
     '/api/auth/totp/confirm',
@@ -139,12 +138,6 @@ async function refreshAccessToken(): Promise<boolean> {
 
 // ─── Auth API ──────────────────────────────────────────────
 export const authAPI = {
-  loginWithPhone: (phone_number: string, otp_code: string) =>
-    apiFetch<AuthResponse>('/api/auth/phone/login', {
-      method: 'POST',
-      body: JSON.stringify({ phone_number, otp_code }),
-    }),
-
   activatePhoneAccount: (phone_number: string, otp_code: string) =>
     apiFetch<AuthResponse>('/api/auth/phone/activate', {
       method: 'POST',

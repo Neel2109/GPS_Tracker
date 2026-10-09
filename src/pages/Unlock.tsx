@@ -84,7 +84,7 @@ export default function Unlock({ onUnlock }: Props) {
                 borderRadius: '14px', padding: '0 16px', transition: 'all 0.2s',
               }}>
                 <input
-                  id="unlock-phone-number"
+                  id="unlock-pin"
                   type="password"
                   inputMode="numeric"
                   autoComplete="current-password"
