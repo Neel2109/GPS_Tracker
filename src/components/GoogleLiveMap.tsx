@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
-import { formatAccuracy, formatCoordinate, getLocationSourceLabel } from '../utils/location';
+import { formatAccuracy, formatCoordinate, formatLocationAge, getLocationSourceLabel } from '../utils/location';
 
 interface LiveMapDevice {
   id: string;
@@ -10,6 +10,7 @@ interface LiveMapDevice {
   last_longitude: number | null;
   last_accuracy: number | null;
   last_location_source: string | null;
+  last_location_time: string | null;
 }
 
 interface Props {
@@ -126,6 +127,7 @@ export default function GoogleLiveMap({
           const latitude = current.last_latitude ?? position.lat;
           const longitude = current.last_longitude ?? position.lng;
           const details = [
+            `${current.status === 'online' ? 'Latest reported fix' : 'Last known fix'} · ${formatLocationAge(current.last_location_time)}`,
             `${formatCoordinate(latitude, 'latitude')}, ${formatCoordinate(longitude, 'longitude')}`,
             `${formatAccuracy(current.last_accuracy)} · ${getLocationSourceLabel(current.last_location_source)}`,
           ].join('<br>');

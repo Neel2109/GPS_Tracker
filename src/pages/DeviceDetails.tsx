@@ -86,9 +86,16 @@ export default function DeviceDetails() {
           {device.last_latitude != null && device.last_longitude != null ? (
             <div className="tg-card !p-2">
               <div className="flex items-center justify-between px-4 pt-2 pb-1">
-                <p className="text-xs font-semibold text-text">LIVE LOCATION</p>
+                <p className="text-xs font-semibold text-text">
+                  {device.status === 'online' ? 'LIVE LOCATION' : 'LAST KNOWN LOCATION'}
+                </p>
                 {device.last_location_source && <span className="text-[10px] text-text-muted bg-bg px-2 py-0.5 rounded-md">{getLocationSourceLabel(device.last_location_source)}</span>}
               </div>
+              {device.status !== 'online' && (
+                <p className="px-4 pb-2 text-xs leading-5 text-text-secondary">
+                  Last fix {formatLocationAge(device.last_location_time)}. A fresh location is unavailable until this device reconnects.
+                </p>
+              )}
               <GoogleLiveMap devices={[device]} selectedDeviceId={device.id} height="380px" showAccuracy className="device-details-map" />
             </div>
           ) : (

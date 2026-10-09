@@ -3,7 +3,7 @@ import L from 'leaflet';
 import { renderToString } from 'react-dom/server';
 import { Laptop, Smartphone, Watch, Car, Bike, User, MapPin, Tablet } from 'lucide-react';
 import type { Device, Location } from '../types';
-import { formatAccuracy, formatCoordinate, getLocationSourceLabel } from '../utils/location';
+import { formatAccuracy, formatCoordinate, formatLocationAge, getLocationSourceLabel } from '../utils/location';
 import { locationAPI } from '../services/api';
 
 interface Props {
@@ -139,15 +139,17 @@ export default function LiveMap({ devices, selectedDeviceId, onDeviceClick, clas
 
       marker.bindPopup(`
         <div style="font-family:'Inter',sans-serif;min-width:180px;">
-          <div style="font-weight:600;font-size:14px;margin-bottom:6px;color:#1A1A2E;">${device.name}</div>
+          <div style="font-weight:600;font-size:14px;margin-bottom:6px;color:#1A1A2E;">${escapeHtml(device.name)}</div>
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
             <span style="width:7px;height:7px;border-radius:50%;background:${device.status === 'online' ? '#00B894' : '#B2BEC3'};display:inline-block;"></span>
             <span style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#636E72;">${device.status}</span>
           </div>
           <div style="font-size:12px;color:#636E72;line-height:1.7;">
+            ${device.status === 'online' ? 'Latest reported fix' : 'Last known fix'} · ${formatLocationAge(device.last_location_time)}<br/>
             ${formatCoordinate(device.last_latitude, 'latitude')}, ${formatCoordinate(device.last_longitude, 'longitude')}<br/>
             Accuracy: ${formatAccuracy(device.last_accuracy)}<br/>
-            ${device.battery_level != null ? `Battery: ${device.battery_level}%` : ''}
+            ${getLocationSourceLabel(device.last_location_source)}<br/>
+            ${device.status !== 'online' && device.battery_level != null ? `Last reported battery: ${device.battery_level}%` : device.battery_level != null ? `Battery: ${device.battery_level}%` : ''}
           </div>
         </div>
       `);
@@ -162,9 +164,9 @@ export default function LiveMap({ devices, selectedDeviceId, onDeviceClick, clas
         polyline.setLatLngs(latlngs);
       } else {
         polyline = L.polyline(latlngs, {
-          color: device.status === 'online' ? '#00B894' : '#6C5CE7',
+          color: device.status === 'online' ? '#00B894' : device.status === 'sleeping' ? '#6C5CE7' : '#8796a1',
           weight: 4,
-          opacity: 0.6,
+          opacity: device.status === 'online' ? 0.6 : 0.42,
           dashArray: '8, 8',
           lineCap: 'round',
           lineJoin: 'round'
@@ -198,4 +200,14 @@ export default function LiveMap({ devices, selectedDeviceId, onDeviceClick, clas
       style={{ height, width: '100%' }}
     />
   );
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character] ?? character);
 }

@@ -4,7 +4,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.hilt)
 }
 
 val localProperties = Properties()
@@ -65,6 +64,33 @@ android {
     }
 }
 
+val preserveAndExcludeWindowsMetadata = tasks.register("preserveAndExcludeWindowsMetadata") {
+    doLast {
+        val androidSourceRoot = file("src/main")
+        val preservedMetadataRoot = layout.buildDirectory.dir("preserved-windows-metadata").get().asFile
+        if (androidSourceRoot.isDirectory) {
+            fileTree(androidSourceRoot).matching { include("**/desktop.ini") }.files.forEach { metadata ->
+                val relativePath = androidSourceRoot.toPath().relativize(metadata.toPath()).toString()
+                val preservedFile = preservedMetadataRoot.resolve(relativePath)
+                preservedFile.parentFile.mkdirs()
+                metadata.copyTo(preservedFile, overwrite = true)
+                metadata.setWritable(true)
+                if (!metadata.delete()) {
+                    throw GradleException("Could not move Windows metadata out of Android sources: $metadata")
+                }
+            }
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(preserveAndExcludeWindowsMetadata)
+}
+
+tasks.withType<org.gradle.api.tasks.Copy>().configureEach {
+    exclude("**/desktop.ini")
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.core.ktx)
@@ -85,8 +111,6 @@ dependencies {
     implementation(libs.androidx.activity.ktx)
     implementation(libs.google.play.services.location)
     implementation(libs.google.maps.compose)
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.compiler)
     implementation(libs.okhttp)
     implementation(libs.retrofit)
     implementation(libs.retrofit.kotlinx.serialization)

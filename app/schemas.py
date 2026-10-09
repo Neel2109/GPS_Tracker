@@ -378,15 +378,6 @@ class PairingCodeResponse(BaseModel):
     class Config:
         from_attributes = True
 
-class DeviceInstallerRequest(DeviceBase):
-    server_url: str
-
-class DeviceInstallerResponse(BaseModel):
-    filename: str
-    content_base64: str
-    device_name: str
-    expires_at: datetime
-
 class DevicePairingResponse(BaseModel):
     id: str
     device_token: str

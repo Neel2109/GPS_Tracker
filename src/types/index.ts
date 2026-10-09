@@ -301,13 +301,6 @@ export interface PairingCode {
   expires_at: string;
 }
 
-export interface DeviceInstaller {
-  filename: string;
-  content_base64: string;
-  device_name: string;
-  expires_at: string;
-}
-
 // ─── Audit Log Types ───────────────────────────────────────
 export interface AuditLog {
   id: string;

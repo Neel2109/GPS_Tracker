@@ -236,7 +236,7 @@ class LocationService : Service() {
                 scheduleReconnect()
             }
 
-            override fun onFailure(webSocket: WebSocket, error: Throwable, response: okhttp3.Response?) {
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: okhttp3.Response?) {
                 if (socket === webSocket) socket = null
                 scheduleReconnect()
             }

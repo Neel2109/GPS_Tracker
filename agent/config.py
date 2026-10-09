@@ -11,6 +11,8 @@ DEFAULT_CONFIG = {
     "ws_url": "ws://localhost:8000",
     "device_id": "",
     "device_token": "",
+    "device_name": "",
+    "device_type": "laptop",
     "heartbeat_interval": 30,
     "location_interval": 60,
     "status_interval": 60,

@@ -494,9 +494,22 @@ private fun DeviceCard(
             device.cpuInfo?.let { Text("CPU: $it") }
             device.ramTotal?.let { Text("Memory: $it") }
             device.storageTotal?.let { Text("Storage: $it") }
-            if (device.latitude != null && device.longitude != null) LocationSummary(device)
-            else Text("No location reported yet.")
-            device.lastLocationTime?.let { Text("Location fix: ${formatTime(it)}", style = MaterialTheme.typography.bodySmall) }
+            if (device.latitude != null && device.longitude != null) {
+                Text(
+                    if (device.status == DeviceStatus.ONLINE) "Latest reported location" else "Last known location",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                LocationSummary(device)
+            } else Text("No location reported yet.")
+            device.lastLocationTime?.let {
+                Text(
+                    "${if (device.status == DeviceStatus.ONLINE) "Latest fix" else "Last known fix"}: ${formatTime(it)}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (device.status != DeviceStatus.ONLINE) {
+                Text("A new location is unavailable until this device reconnects.", style = MaterialTheme.typography.bodySmall)
+            }
             device.lastSeen?.let { Text("Last update: ${formatTime(it)}", style = MaterialTheme.typography.bodySmall) }
             if (device.isLostMode) {
                 Text("LOST MODE ACTIVE", color = MaterialTheme.colorScheme.error)
@@ -798,6 +811,8 @@ private fun MapScreen(
 
 private fun markerSummary(device: Device): String = buildList {
     add(statusLabel(device.status))
+    add(if (device.status == DeviceStatus.ONLINE) "Latest reported location" else "Last known location")
+    device.lastLocationTime?.let { add("Updated ${formatTime(it)}") }
     device.battery?.let { add("Battery $it%") }
     device.accuracy?.let { add("Accuracy ±${it.toInt()} m") }
 }.joinToString(" · ")

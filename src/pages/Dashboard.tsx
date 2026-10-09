@@ -153,7 +153,7 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <span className={`tracking-status ${activeDevice.status === 'online' ? 'tracking-status-online' : 'tracking-status-offline'}`}>
-                  {activeDevice.status === 'online' ? 'Online' : 'Offline'}
+                  {activeDevice.status === 'online' ? 'Online' : activeDevice.status.replaceAll('_', ' ')}
                 </span>
               </div>
 
@@ -169,6 +169,17 @@ export default function Dashboard() {
                 <Fact label="Memory" value={activeDevice.ram_total || 'Not reported'} />
                 <Fact label="Storage" value={activeDevice.storage_total || 'Not reported'} />
               </div>
+
+              {activeDevice.status !== 'online' && (
+                <div role="status" className="mb-3 rounded-lg border border-[#d8e1e7] bg-[#f3f6f8] px-3 py-2.5 text-xs leading-5 text-[#596873]">
+                  <strong className="text-[#344550]">Last known fix · {formatLocationAge(activeDevice.last_location_time)}</strong>
+                  <p>
+                    {activeDevice.last_latitude != null && activeDevice.last_longitude != null
+                      ? 'This is the last position reported before the device became unreachable. It is not a live trace; new fixes resume when the app reconnects.'
+                      : 'The device cannot report a position while unreachable, and no earlier location fix is available.'}
+                  </p>
+                </div>
+              )}
 
               {locationRequestMessage && <p role="status" className="mb-3 text-xs text-[#5b5b65]">{locationRequestMessage}</p>}
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-black/[0.06] pt-3">
@@ -237,7 +248,9 @@ export default function Dashboard() {
         <section className="tracking-map-panel" aria-label="Device location map">
           <div className="tracking-map-heading">
             <div>
-              <p className="tracking-eyebrow text-[#797b81]">LIVE MAP</p>
+              <p className="tracking-eyebrow text-[#797b81]">
+                {activeDevice?.status === 'online' ? 'LIVE MAP' : activeDevice ? 'LAST KNOWN LOCATION' : 'DEVICE MAP'}
+              </p>
               <h2 className="mt-1 text-sm font-bold text-[#26272c]">
                 {activeDevice ? activeDevice.name : 'Device locations'}
               </h2>

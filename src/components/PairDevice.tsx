@@ -1,74 +1,69 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { DeviceInstaller, DeviceType } from '../types';
+import { createPortal } from 'react-dom';
+import type { Device, DeviceType } from '../types';
 import { DEVICE_TYPE_LABELS } from '../types';
 import { deviceAPI } from '../services/api';
 
 interface Props { onClose: () => void; onPaired: () => void; }
-type PairingStatus = 'ready' | 'connected' | 'expired';
 
 function parseUtcDate(value: string): number {
   return new Date(/[zZ]|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`).getTime();
 }
 
 export default function PairDevice({ onClose, onPaired }: Props) {
-  const [step, setStep] = useState<'form' | 'installer'>('form');
+  const [step, setStep] = useState<'form' | 'waiting'>('form');
   const [name, setName] = useState('');
   const [type, setType] = useState<DeviceType>('laptop');
-  const [installer, setInstaller] = useState<DeviceInstaller | null>(null);
   const [loading, setLoading] = useState(false);
-  const [downloaded, setDownloaded] = useState(false);
+  const [copiedAddress, setCopiedAddress] = useState(false);
   const [error, setError] = useState('');
-  const [countdown, setCountdown] = useState(0);
-  const [pairingStatus, setPairingStatus] = useState<PairingStatus>('ready');
   const existingDeviceIds = useRef<Set<string>>(new Set());
   const generatedAt = useRef(0);
+  const onPairedRef = useRef(onPaired);
   const [serverUrl, setServerUrl] = useState(`${window.location.protocol}//${window.location.hostname}:8000`);
   const serverAddress = serverUrl.trim().replace(/\/+$/, '');
   const serverAddressIsValid = /^https?:\/\/[^/\s]+(?::\d+)?$/i.test(serverAddress);
-  const formattedCountdown = `${Math.floor(countdown / 3600)}:${Math.floor((countdown % 3600) / 60).toString().padStart(2, '0')}:${(countdown % 60).toString().padStart(2, '0')}`;
   const types: DeviceType[] = ['laptop', 'desktop'];
 
-  const checkForConnection = useCallback(async () => {
-    if (!installer || pairingStatus !== 'ready') return;
+  useEffect(() => {
+    onPairedRef.current = onPaired;
+  }, [onPaired]);
+
+  const checkForConnection = useCallback(async (): Promise<Device | null> => {
     try {
       const devices = await deviceAPI.list();
-      const connectedDevice = devices.find(device =>
+      return devices.find(device =>
         !existingDeviceIds.current.has(device.id)
-        && device.name === installer.device_name
+        && device.name === name.trim()
         && device.device_type === type
         && device.status === 'online'
         && parseUtcDate(device.created_at) >= generatedAt.current - 5000,
-      );
-      if (connectedDevice) {
-        setPairingStatus('connected');
-        onPaired();
-      }
+      ) ?? null;
     } catch (requestError) {
-      console.error('Could not check device installer status:', requestError);
+      setError(requestError instanceof Error ? requestError.message : 'Could not check for the device connection.');
+      return null;
     }
-  }, [installer, onPaired, pairingStatus, type]);
+  }, [name, type]);
 
   useEffect(() => {
-    if (step !== 'installer' || !installer) return;
-    const expiresAt = parseUtcDate(installer.expires_at);
-    const updateCountdown = () => {
-      const remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
-      setCountdown(remaining);
-      if (remaining === 0) setPairingStatus(status => status === 'connected' ? status : 'expired');
+    if (step !== 'waiting') return;
+    let checking = false;
+    const check = async () => {
+      if (checking) return;
+      checking = true;
+      const connectedDevice = await checkForConnection();
+      checking = false;
+      if (connectedDevice) {
+        onPairedRef.current();
+        onClose();
+      }
     };
-    updateCountdown();
-    const timer = window.setInterval(updateCountdown, 1000);
-    return () => window.clearInterval(timer);
-  }, [installer, step]);
-
-  useEffect(() => {
-    if (step !== 'installer' || !installer || pairingStatus !== 'ready') return;
-    void checkForConnection();
-    const interval = window.setInterval(() => { void checkForConnection(); }, 2500);
+    void check();
+    const interval = window.setInterval(() => { void check(); }, 2500);
     return () => window.clearInterval(interval);
-  }, [checkForConnection, installer, pairingStatus, step]);
+  }, [checkForConnection, onClose, step]);
 
-  const createInstaller = async (event: React.FormEvent) => {
+  const beginPairing = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
     setLoading(true);
@@ -76,79 +71,48 @@ export default function PairDevice({ onClose, onPaired }: Props) {
       const existingDevices = await deviceAPI.list();
       existingDeviceIds.current = new Set(existingDevices.map(device => device.id));
       generatedAt.current = Date.now();
-      const packageInfo = await deviceAPI.createInstaller(name.trim(), type, serverAddress);
-      setInstaller(packageInfo);
-      setPairingStatus('ready');
-      setDownloaded(false);
-      setCountdown(Math.max(0, Math.floor((parseUtcDate(packageInfo.expires_at) - Date.now()) / 1000)));
-      setStep('installer');
+      setStep('waiting');
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Could not create the device installer.');
+      setError(requestError instanceof Error ? requestError.message : 'Could not start device pairing.');
     } finally {
       setLoading(false);
     }
   };
 
-  const downloadInstaller = () => {
-    if (!installer) return;
+  const copyServerAddress = async () => {
     try {
-      const binary = window.atob(installer.content_base64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = installer.filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setDownloaded(true);
+      await navigator.clipboard.writeText(serverAddress);
+      setCopiedAddress(true);
     } catch (downloadError) {
-      console.error('Could not download TrackGuard installer:', downloadError);
-      setError('The installer download failed. Please try again.');
+      console.error('Could not copy TrackGuard server address:', downloadError);
+      setError('Could not copy the server address. Select and copy it manually.');
     }
   };
 
-  const regenerateInstaller = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const devices = await deviceAPI.list();
-      existingDeviceIds.current = new Set(devices.map(device => device.id));
-      generatedAt.current = Date.now();
-      const packageInfo = await deviceAPI.createInstaller(name.trim(), type, serverAddress);
-      setInstaller(packageInfo);
-      setPairingStatus('ready');
-      setDownloaded(false);
-      setCountdown(Math.max(0, Math.floor((parseUtcDate(packageInfo.expires_at) - Date.now()) / 1000)));
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Could not create the installer.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4" onClick={onClose}>
+  return createPortal(
+    <div
+      className="fixed inset-0 modal-overlay flex items-start justify-center overflow-y-auto p-4 sm:items-center sm:py-6"
+      style={{ zIndex: 2000 }}
+      onClick={onClose}
+    >
       <div
-        className="tg-card !w-full !max-w-[410px] !rounded-[18px] !p-6 animate-scale"
+        className="tg-card my-auto !w-full !max-w-[440px] !max-h-[calc(100dvh-3rem)] !overflow-y-auto !rounded-xl !p-5 sm:!p-6 animate-scale"
         style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.12)' }}
         onClick={event => event.stopPropagation()}
       >
         {step === 'form' ? (
           <>
-            <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#f0edff] text-primary">
+            <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-[#e9f3ee] text-[#28714d]">
               <DeviceGlyph type={type} />
             </div>
-            <h3 className="text-center text-xl font-semibold text-text mb-1">Add a device</h3>
-            <p className="text-center text-sm text-text-muted mb-5">
-              Create a one-time graphical installer. The device IP will appear automatically after it connects.
+            <h3 className="mb-2 text-center text-xl font-semibold text-text">Add a device</h3>
+            <p className="mx-auto mb-5 max-w-sm text-center text-sm leading-5 text-text-muted">
+              Open the TrackGuard app already installed on the device. It pairs after you enter the PIN and connects.
             </p>
 
             {error && <div role="alert" className="tg-error mb-4">{error}</div>}
 
-            <form onSubmit={createInstaller} className="space-y-4">
+            <form onSubmit={beginPairing} className="space-y-4">
               <div>
                 <label htmlFor="device-name" className="tg-label">Device name</label>
                 <input
@@ -190,92 +154,67 @@ export default function PairDevice({ onClose, onPaired }: Props) {
                   spellCheck={false}
                   required
                 />
-                <p className="mt-1.5 text-[10px] leading-4 text-[#898b91]">
+                <p className="mt-1.5 text-xs leading-5 text-[#777981]">
                   Enter the address of the computer running TrackGuard. A remote device needs a publicly reachable server address.
                 </p>
               </div>
 
-              <div className="rounded-xl border border-[#e7e2fa] bg-[#f7f5ff] px-3 py-2.5 text-left">
-                <p className="text-[11px] font-semibold text-[#55469c]">No terminal or code entry</p>
-                <p className="mt-0.5 text-[10px] leading-4 text-[#77718f]">
-                    Download the Windows app, open it on the device, and click Install and connect.
+              <div className="rounded-lg border border-[#d9e8df] bg-[#f3f8f5] px-3.5 py-3 text-left">
+                <p className="text-xs font-semibold text-[#315c45]">Use the installed app</p>
+                <p className="mt-1 text-xs leading-5 text-[#61756a]">
+                  No download is created here. The device app will ask for this server address, its name, and the owner PIN.
                 </p>
               </div>
 
               <div className="flex gap-3 pt-1">
-                <button type="button" onClick={onClose} className="tg-btn tg-btn-outline flex-1 justify-center">Cancel</button>
+                <button type="button" onClick={onClose} className="tg-btn tg-btn-outline min-h-11 flex-1 justify-center">Cancel</button>
                 <button
                   type="submit"
                   disabled={loading || !name.trim() || !serverAddressIsValid}
-                  className="tg-btn tg-btn-primary flex-1 justify-center"
+                  className="tg-btn tg-btn-primary min-h-11 flex-1 justify-center"
                 >
-                  {loading ? 'Creating installer…' : 'Create installer'}
+                  {loading ? 'Connecting…' : 'Start pairing'}
                 </button>
               </div>
             </form>
           </>
         ) : (
           <div className="text-center">
-            <div className={`mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full ${pairingStatus === 'connected' ? 'bg-[#e5f7ec] text-[#39814d]' : pairingStatus === 'expired' ? 'bg-[#fff0f0] text-[#bd4545]' : 'bg-[#f0edff] text-primary'}`}>
-              {pairingStatus === 'connected' ? <CheckIcon /> : <DeviceGlyph type={type} />}
+            <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-[#e9f3ee] text-[#28714d]">
+              <DeviceGlyph type={type} />
             </div>
-            <h3 className="text-xl font-semibold text-text mb-1">
-              {pairingStatus === 'connected' ? 'Device connected' : pairingStatus === 'expired' ? 'Installer expired' : 'Install on your device'}
-            </h3>
-            <p className="text-sm text-text-muted mb-4">
-              {pairingStatus === 'connected'
-                ? `${installer?.device_name} is online. Find it using its IP in the dashboard.`
-                : pairingStatus === 'expired'
-                  ? 'For security, this installer can no longer be used. Create a new one.'
-                  : <>Setup package for <span className="font-medium text-text">{installer?.device_name}</span></>}
+            <h3 className="mb-2 text-xl font-semibold text-text">Waiting for the app</h3>
+            <p className="mx-auto mb-5 max-w-sm text-sm leading-5 text-text-muted">
+              Open TrackGuard on <span className="font-medium text-text">{name.trim()}</span>, enter the server address and PIN, then start pairing.
             </p>
 
-            <div className="mb-4 flex items-center justify-center gap-2 text-xs">
-              <span className={`h-2 w-2 rounded-full ${pairingStatus === 'connected' ? 'bg-[#4caa65]' : pairingStatus === 'expired' ? 'bg-[#dc6262]' : 'animate-pulse bg-[#d9a82e]'}`} />
-              <span className={pairingStatus === 'connected' ? 'font-medium text-[#39814d]' : pairingStatus === 'expired' ? 'font-medium text-[#bd4545]' : 'text-text-secondary'}>
-                {pairingStatus === 'connected' ? 'Agent connected securely'
-                  : pairingStatus === 'expired' ? 'Download expired'
-                    : <>Waiting for installation · expires in <span className="font-mono font-semibold">{formattedCountdown}</span></>}
-              </span>
-            </div>
-
-            {pairingStatus === 'ready' && (
-              <div className="mb-4 space-y-2 rounded-xl border border-[#e4e4e7] bg-[#f7f7f8] p-3 text-left text-[11px] leading-5 text-[#777981]">
-                <p><strong className="text-[#55565e]">1.</strong> Transfer the downloaded EXE to {installer?.device_name}.</p>
-                <p><strong className="text-[#55565e]">2.</strong> Double-click the EXE and choose <strong>Install and connect</strong>.</p>
-                <p><strong className="text-[#55565e]">3.</strong> The bundled agent runs in the background and starts when you sign in. No Python installation is needed.</p>
-                <p className="border-t border-[#e4e4e7] pt-2 text-[10px] leading-4">
-                  Keep the EXE private: it contains a one-use enrollment credential and expires in 24 hours. The address above is the TrackGuard server address, not the tracked device's IP.
-                </p>
+            <div className="mb-4 rounded-lg border border-[#e4e4e7] bg-[#f7f7f8] p-3 text-left">
+              <label htmlFor="pair-server-address" className="mb-1 block text-xs font-semibold text-[#55565e]">Server address</label>
+              <div className="flex gap-2">
+                <input
+                  id="pair-server-address"
+                  value={serverAddress}
+                  readOnly
+                  className="tg-input min-w-0 flex-1 !py-2.5 !text-xs"
+                  onFocus={event => event.currentTarget.select()}
+                />
+                <button type="button" onClick={() => void copyServerAddress()} className="tg-btn tg-btn-outline min-h-10 shrink-0 justify-center px-3">
+                  {copiedAddress ? 'Copied' : 'Copy'}
+                </button>
               </div>
-            )}
-
-            {pairingStatus === 'ready' && downloaded && (
-              <p role="status" className="mb-3 text-xs text-[#5c785e]">
-                Installer downloaded. Keep this window open; it will detect the agent and show the device IP in your list.
-              </p>
-            )}
+              <p className="mt-2 text-xs leading-5 text-[#696b70]">The app asks for this address, the device name above, and the PIN. Pairing completes only when its agent is online.</p>
+            </div>
             {error && <p role="alert" className="mb-3 text-left text-xs text-[#b14f4f]">{error}</p>}
 
-            <div className="flex gap-2">
-              {pairingStatus === 'ready' && (
-                <button onClick={downloadInstaller} className="tg-btn tg-btn-primary flex-1 justify-center">
-                  {downloaded ? 'Download EXE again' : 'Download Windows EXE'}
-                </button>
-              )}
-              {pairingStatus === 'expired' && (
-                <button onClick={() => void regenerateInstaller()} disabled={loading} className="tg-btn tg-btn-primary flex-1 justify-center">
-                  {loading ? 'Creating…' : 'Create a new installer'}
-                </button>
-              )}
-              <button onClick={onClose} className="tg-btn tg-btn-outline flex-1 justify-center">
-                {pairingStatus === 'connected' || pairingStatus === 'expired' ? 'Done' : 'Close'}
-              </button>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setStep('form')} className="tg-btn tg-btn-outline min-h-11 flex-1 justify-center">Back</button>
+              <button type="button" onClick={onClose} className="tg-btn tg-btn-primary min-h-11 flex-1 justify-center">Close</button>
             </div>
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

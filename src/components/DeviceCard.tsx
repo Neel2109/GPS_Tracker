@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import type { Device } from '../types';
-import { formatAccuracy, formatCoordinate, getLocationSourceLabel } from '../utils/location';
+import { formatAccuracy, formatCoordinate, formatLocationAge, getLocationSourceLabel } from '../utils/location';
 
 interface Props {
   device: Device;
@@ -95,10 +95,13 @@ export default function DeviceCard({ device, expanded }: Props) {
               <PinIcon />
             </div>
             <div>
-              <p className="text-xs text-text-muted">Location</p>
+              <p className="text-xs text-text-muted">
+                {device.status === 'online' ? 'Latest reported location' : 'Last known location'}
+              </p>
               <p className="text-xs font-medium text-text">
                 {formatCoordinate(device.last_latitude, 'latitude')}, {formatCoordinate(device.last_longitude, 'longitude')}
               </p>
+              <p className="mt-0.5 text-[11px] text-text-muted">Updated {formatLocationAge(device.last_location_time)}</p>
             </div>
           </div>
           <span className="text-[10px] text-text-muted bg-bg px-2.5 py-1 rounded-md tracking-wider">

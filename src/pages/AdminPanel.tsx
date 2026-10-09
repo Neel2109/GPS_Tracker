@@ -704,6 +704,7 @@ export default function AdminPanel({ user }: Props) {
               last_longitude: device.last_longitude,
               last_accuracy: device.last_accuracy,
               last_location_source: device.last_location_source,
+              last_location_time: device.last_location_time,
             }))}
             height="440px"
             className="overflow-hidden rounded-lg"

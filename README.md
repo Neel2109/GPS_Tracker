@@ -333,34 +333,32 @@ the same computer; for another computer on the same network use the server
 computer's LAN IP (for example, `http://192.168.1.10:8000`). For a device
 outside that network, the server needs a publicly reachable HTTPS address.
 
-Choose **Create installer** and download the generated Windows `.exe`. Transfer
-it to the tracked Windows device and double-click it. In the graphical setup
-window, click **Install and connect**. The executable includes the Python
-runtime and agent dependencies; it enrolls the device, starts the agent in the
-background, and adds it to the current Windows user's startup programs so it
-starts when you sign in. The tracked device does
-not need Python installed, and no terminal command or manual pairing-code
-entry is required. Keep the dashboard dialog open until the device is detected;
-its local/public IP appears after the first network update. Each generated EXE
-contains a one-use enrollment credential, expires after 24 hours, and should
-be transferred privately rather than shared.
+Build the reusable Windows app once with `.\.venv312\Scripts\python.exe build_exe.py`.
+This creates `dist\TrackGuardSetup.exe`; transfer that app to each Windows
+device once. In the dashboard, enter the device's name/type and choose
+**Start pairing**. Open the already-installed TrackGuard app on the device,
+enter the same server address and name plus the owner PIN, then choose
+**Pair and connect**. The device appears in the dashboard only after its agent
+connects. It is neither redownloaded nor paired again on future launches; the
+app reuses its locally saved device token and starts tracking. The app starts
+with the current Windows user and does not require Python or terminal commands
+on the tracked device. The PIN is sent to the configured server for sign-in and
+is never embedded in the app or saved in the device configuration.
 
 Ensure Windows Firewall allows inbound TCP connections to port 8000 on the
-server and that the device can reach the configured server address. The
-Windows EXE builder is installed on the TrackGuard server by the
-`installer/requirements-build.txt` setup step. The server does not need the
-tracked device's IP to enroll it: the agent connects outward to TrackGuard,
-and the dashboard learns the device's IP from the agent's network status.
-Pairing by an IP address alone cannot install or authenticate an agent on an
-unconfigured device; install the generated EXE on that device once. Afterward,
-use its reported IP to find it in the dashboard.
+server and that the device can reach the configured server address. The server
+does not need the tracked device's IP to enroll it: the agent connects outward
+to TrackGuard, and the dashboard learns the device's IP from the agent's
+network status. Pairing by IP address alone cannot authenticate an agent; the
+installed app signs in with `LOCAL_PIN` before requesting a one-use pairing
+code.
 
 ## Project layout
 
 ```text
 app/                 FastAPI application, persistence, authentication, and API routers
 agent/               Windows telemetry and remote-command agent
-installer/           Windows graphical installer and installer build requirements
+installer/           Reusable Windows device app source and build requirements
 src/                 React/TypeScript dashboard
 public/              Frontend static assets and PWA manifest
 scripts/dev.mjs      Starts the backend and Vite development server together
@@ -387,7 +385,7 @@ package.json         Frontend dependencies and npm scripts
 - **Remote Restart** — Restart device
 - **Remote Shutdown** — Shut down device
 - **Lost Mode** — Increased tracking frequency (10s intervals)
-- **Device Pairing** — Windows graphical installer; no manual pairing code or terminal
+- **Device Pairing** — Reusable Windows app pairs with the owner PIN; no per-device download or manual code
 - **Multi-Device** — Manage multiple registered devices; this repository currently includes a Windows agent
 - **PWA-ready dashboard** — Add the dashboard to a mobile home screen where supported
 
@@ -405,7 +403,8 @@ POST /api/auth/logout
 GET  /api/auth/me
 
 GET  /api/devices
-POST /api/devices/pair/installer
+POST /api/devices/pair/generate
+POST /api/devices/pair/activate
 GET  /api/devices/{id}
 DELETE /api/devices/{id}
 
@@ -456,8 +455,8 @@ dashboard is disconnected.
   network. Do not expose the development server directly to the public internet.
 - Configure a strong `SECRET_KEY`/`JWT_SECRET`, a private `LOCAL_PIN`, and
   narrow `CORS_ORIGINS` to the actual dashboard origins.
-- Treat each generated installer as a one-use enrollment credential. Transfer
-  it privately and delete it once installation is complete.
+- Keep `LOCAL_PIN` private. The reusable device app asks for it at first pairing
+  and stores only the issued device token for later launches.
 - The Windows agent stores its registration configuration under the current
   user's `%APPDATA%\TrackGuard` directory. Protect access to that account and
   device.
@@ -472,8 +471,9 @@ dashboard is disconnected.
 | --- | --- |
 | `npm run dev` cannot find Python | Create `.venv312` as shown above and install `requirements.txt`. The development script searches for `.venv312` and `.venv`. |
 | Dashboard cannot reach the API | Confirm the backend is running on port 8000, the Vite proxy is active, and the server firewall allows connections from the tracked device where needed. |
-| Device does not appear after installer setup | Keep the pairing dialog open, verify the server URL is reachable from that laptop, and check its `TrackGuard\agent.log` under `%LOCALAPPDATA%`. |
+| Device does not appear after PIN pairing | Keep the dashboard pairing dialog open, verify the app's server address and device name match, and check `TrackGuard\agent.log` under `%LOCALAPPDATA%`. |
 | Agent log shows WebSocket HTTP 403 | The saved device pairing is not present in the server database or the token is no longer accepted. Add/pair this PC again from the dashboard; the agent now stops retrying and records this recovery hint in `logs\agent.log`. |
+| Device is offline, shut down, or unreachable | The dashboard retains the last location fix and its timestamp. It cannot obtain a new GPS fix while the device is powered off or disconnected; new tracking resumes after the app reconnects. IP geolocation is approximate and is not a live device trace. |
 | Location is missing or approximate | Enable Windows Location Services and grant the relevant permissions. IP fallback is approximate and may not identify the laptop's physical location. |
 | Google map does not load | Confirm the Maps JavaScript API and billing are enabled, the browser key is referrer-restricted correctly, and Vite was restarted after changing `.env`. |
 | PIN unlock is unavailable | Set `LOCAL_PIN` to 6–12 digits in the server `.env` and restart the backend. The endpoint temporarily rate-limits repeated incorrect attempts. |

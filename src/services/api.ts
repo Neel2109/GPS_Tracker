@@ -21,7 +21,6 @@ import type {
   Location,
   Command,
   PairingCode,
-  DeviceInstaller,
   AuditLog,
   Trip,
   LocationAccessRequest,
@@ -98,13 +97,14 @@ async function apiFetch<T>(
   }
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: 'Request failed' }));
-    let errorMsg = `HTTP ${res.status}`;
-    if (err.detail) {
+    const err = await res.json().catch(() => null);
+    let errorMsg = `Request failed (HTTP ${res.status})`;
+    if (err?.detail) {
       if (Array.isArray(err.detail)) {
         errorMsg = err.detail.map((e: any) => `${e.loc[e.loc.length - 1]}: ${e.msg}`).join(', ');
       } else {
-        errorMsg = String(err.detail);
+        const detail = String(err.detail);
+        errorMsg = detail === 'Request failed' ? `Request failed (HTTP ${res.status})` : detail;
       }
     }
     throw new ApiError(errorMsg, res.status);
@@ -356,12 +356,6 @@ export const deviceAPI = {
     apiFetch<PairingCode>('/api/devices/pair/generate', {
       method: 'POST',
       body: JSON.stringify({ name: deviceName, device_type: deviceType }),
-    }),
-
-  createInstaller: (deviceName: string, deviceType: string, serverUrl: string) =>
-    apiFetch<DeviceInstaller>('/api/devices/pair/installer', {
-      method: 'POST',
-      body: JSON.stringify({ name: deviceName, device_type: deviceType, server_url: serverUrl }),
     }),
 
   // Lost Mode
